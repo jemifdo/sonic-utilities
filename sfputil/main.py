@@ -1002,6 +1002,10 @@ def presence(port):
         for physical_port in physical_port_list:
             port_name = get_physical_port_name(logical_port_name, i, ganged)
 
+            if is_port_type_rj45(port_name):
+                output_table.append([port_name, "SFP presence is not applicable for RJ45 port"])
+                continue
+
             try:
                 presence = platform_chassis.get_sfp(physical_port).get_presence()
             except NotImplementedError:
