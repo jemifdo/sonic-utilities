@@ -350,10 +350,11 @@ class TestConfigDPB(object):
             commands["breakout"], ['{}'.format(interface), '{}'.format(newMode), '-v', '-y'], obj=obj)
 
         print(result.exit_code, result.output)
-        assert result.exit_code == 0
+        assert result.exit_code == 1
         assert 'Below Config can not be verified' in result.output
         assert 'UNKNOWN_TABLE' in result.output
         assert 'Do you wish to Continue?' in result.output
+        assert 'Aborted!' in result.output
 
         brk_cfg_table = db.cfgdb.get_table('BREAKOUT_CFG')
         assert brk_cfg_table["Ethernet0"]["brkout_mode"] == '{}'.format(curMode)

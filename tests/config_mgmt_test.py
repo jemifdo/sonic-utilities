@@ -226,7 +226,8 @@ class TestConfigMgmt(TestCase):
         cmdpb = config_mgmt.ConfigMgmtDPB(source=config_mgmt.CONFIG_DB_JSON_FILE)
         # mock funcs
         cmdpb.writeConfigDB = mock.MagicMock(return_value=True)
-        cmdpb._verifyAsicDB = mock.MagicMock(return_value=True)
+        cmdpb._verifyDelPortsAsicDB = mock.MagicMock(return_value=True)
+        cmdpb._verifyAddPortsAsicDB = mock.MagicMock(return_value=True)
         from .mock_tables import dbconnector
         return cmdpb
 

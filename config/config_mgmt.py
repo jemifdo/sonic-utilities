@@ -354,7 +354,7 @@ class ConfigMgmtDPB(ConfigMgmt):
 
     def _checkNoPortsInAsicDb(self, db, ports, portMap):
         '''
-        Check ASIC DB for PORTs in port List
+        Check ASIC DB for PORTs absence in port List
 
         Parameters:
             db (SonicV2Connector): database.
@@ -378,9 +378,9 @@ class ConfigMgmtDPB(ConfigMgmt):
 
         return True
 
-    def _verifyAsicDB(self, db, ports, portMap, timeout):
+    def _verifyDelPortsAsicDB(self, db, ports, portMap, timeout):
         '''
-        Verify in the Asic DB that port are deleted, Keep on trying till timeout
+        Verify in the Asic DB that ports are deleted, Keep on trying till timeout
         period.
 
         Parameters:
@@ -392,10 +392,10 @@ class ConfigMgmtDPB(ConfigMgmt):
         Returns:
             (bool)
         '''
-        self.sysLog(doPrint=True, msg="Verify Port Deletion from Asic DB, Wait...")
+        self.sysLog(doPrint=True, msg="Verifying Port Deletion from Asic DB, Wait...")
         try:
             for waitTime in range(timeout):
-                self.sysLog(logLevel=syslog.LOG_DEBUG, msg='Check Asic DB: {} \
+                self.sysLog(logLevel=syslog.LOG_DEBUG, msg='Check Asic DB DelPort: {} \
                     try'.format(waitTime+1))
                 # checkNoPortsInAsicDb will return True if all ports are not
                 # present in ASIC DB
@@ -405,9 +405,70 @@ class ConfigMgmtDPB(ConfigMgmt):
 
             # raise if timer expired
             if waitTime + 1 == timeout:
-                self.sysLog(syslog.LOG_CRIT, "!!!  Critical Failure, Ports \
-                    are not Deleted from ASIC DB, Bail Out  !!!", doPrint=True)
-                raise Exception("Ports are present in ASIC DB after {} secs".format(timeout))
+                self.sysLog(syslog.LOG_CRIT, "!!!  Critical Failure, Ports are not Deleted from ASIC DB, Bail Out  !!!", doPrint=True)
+                raise Exception("Ports are not removed from ASIC DB after {} secs".format(timeout))
+
+        except Exception as e:
+            self.sysLog(doPrint=True, logLevel=syslog.LOG_ERR, msg=str(e))
+            raise e
+
+        return True
+
+    def _checkAllPortsInAsicDb(self, db, ports, portMap):
+        '''
+        Check ASIC DB for PORTs presence in port List
+
+        Parameters:
+            db (SonicV2Connector): database.
+            ports (list): List of ports
+            portMap (dict): port to OID map.
+
+        Returns:
+            (bool): True, if all ports are not present.
+        '''
+        try:
+            # connect to ASIC DB,
+            db.connect(db.ASIC_DB)
+            for port in ports:
+                key = self.oidKey + portMap[port]
+                if self._checkKeyinAsicDB(key, db) != True:
+                    return False
+
+        except Exception as e:
+            self.sysLog(doPrint=True, logLevel=syslog.LOG_ERR, msg=str(e))
+            return False
+
+        return True
+
+    def _verifyAddPortsAsicDB(self, db, ports, timeout):
+        '''
+        Verify in the Asic DB that ports are created, Keep on trying till timeout
+        period.
+
+        Parameters:
+            db (SonicV2Connector): database.
+            ports (list): port list to check in ASIC DB.
+            timeout (int): timeout period
+
+        Returns:
+            (bool)
+        '''
+        self.sysLog(doPrint=True, msg="Verifying Port Creation in Asic DB, Wait...")
+        try:
+            for waitTime in range(timeout):
+                portMap, oidMap = port_util.get_interface_oid_map(db)
+                self.sysLog(logLevel=syslog.LOG_DEBUG, msg='Check Asic DB AddPort: {} \
+                    try'.format(waitTime+1))
+                # checkAllPortsInAsicDb will return True if all ports are
+                # present in ASIC DB
+                if self._checkAllPortsInAsicDb(db, ports, portMap):
+                    break
+                tsleep(1)
+
+            # raise if timer expired
+            if waitTime + 1 == timeout:
+                self.sysLog(syslog.LOG_CRIT, "!!!  Critical Failure, Ports are not Created in ASIC DB, Bail Out  !!!", doPrint=True)
+                raise Exception("Ports are not added to ASIC DB after {} secs".format(timeout))
 
         except Exception as e:
             self.sysLog(doPrint=True, logLevel=syslog.LOG_ERR, msg=str(e))
@@ -430,21 +491,26 @@ class ConfigMgmtDPB(ConfigMgmt):
         Returns:
             (deps, ret) (tuple)[list, bool]: dependecies and success/failure.
         '''
-        MAX_WAIT = 60
+        MAX_WAIT = 30
         try:
-            # delete Port and get the Config diff, deps and True/False
-            delConfigToLoad, deps, ret = self._deletePorts(ports=delPorts, \
-                force=force)
-            # return dependencies if delete port fails
-            if ret == False:
-                return deps, ret
+            delConfigToLoad = None
+            addConfigtoLoad = None
 
-            # add Ports and get the config diff and True/False
-            addConfigtoLoad, ret = self._addPorts(portJson=portJson, \
-                loadDefConfig=loadDefConfig)
-            # return if ret is False, Great thing, no change is done in Config
-            if ret == False:
-                return None, ret
+            if delPorts:
+                # delete Port and get the Config diff, deps and True/False
+                delConfigToLoad, deps, ret = self._deletePorts(ports=delPorts,\
+                                                               force=force)
+                # return dependencies if delete port fails
+                if ret == False:
+                    return deps, ret
+
+            if portJson:
+                # add Ports and get the config diff and True/False
+                addConfigtoLoad, ret = self._addPorts(portJson=portJson,\
+                                                      loadDefConfig=loadDefConfig)
+                # return if ret is False, Great thing, no change is done in Config
+                if ret == False:
+                    return None, ret
 
             # Save Port OIDs Mapping Before Deleting Port
             dataBase = SonicV2Connector(host="127.0.0.1")
@@ -456,12 +522,18 @@ class ConfigMgmtDPB(ConfigMgmt):
             # -- Update deletion of ports in Config DB,
             # -- verify Asic DB for port deletion,
             # -- then update addition of ports in config DB.
-            self._shutdownIntf(delPorts)
-            self.writeConfigDB(delConfigToLoad)
-            # Verify in Asic DB,
-            self._verifyAsicDB(db=dataBase, ports=delPorts, portMap=if_name_map, \
-                timeout=MAX_WAIT)
-            self.writeConfigDB(addConfigtoLoad)
+            if delConfigToLoad:
+                self._shutdownIntf(delPorts)
+                self.writeConfigDB(delConfigToLoad)
+                # Verify in Asic DB if the ports are deleted
+                self._verifyDelPortsAsicDB(db=dataBase, ports=delPorts, portMap=if_name_map,\
+                                           timeout=MAX_WAIT)
+
+            if addConfigtoLoad:
+                self.writeConfigDB(addConfigtoLoad)
+                tsleep(2)
+                # Verify in Asic DB if the ports are created
+                self._verifyAddPortsAsicDB(db=dataBase, ports=list(portJson['PORT'].keys()), timeout=MAX_WAIT)
 
         except Exception as e:
             self.sysLog(doPrint=True, logLevel=syslog.LOG_ERR, msg=str(e))
@@ -654,7 +726,7 @@ class ConfigMgmtDPB(ConfigMgmt):
             # if uniqueKeys are needed, merge rest of the keys of D2 in D1
             if uniqueKeys:
                 D1.update(D2)
-        except Exce as e:
+        except Exception as e:
             self.sysLog(doPrint=True, logLevel=syslog.LOG_ERR, \
                 msg="Merge Config failed")
             self.sysLog(doPrint=True, logLevel=syslog.LOG_ERR, msg=str(e))
