@@ -873,16 +873,16 @@ Ethernet200  Not present
 
         result = runner.invoke(show.cli.commands["interfaces"].commands["transceiver"].commands["presence"], ["Ethernet16"])
         expected = """Port        Presence
-----------  ----------
-Ethernet16  Present
+----------  --------------------------------------------
+Ethernet16  SFP presence is not applicable for RJ45 port
 """
         assert result.exit_code == 0
         assert result.output == expected
 
         result = runner.invoke(show.cli.commands["interfaces"].commands["transceiver"].commands["presence"], ["Ethernet28"])
         expected = """Port        Presence
-----------  ----------
-Ethernet28  Present
+----------  --------------------------------------------
+Ethernet28  SFP presence is not applicable for RJ45 port
 """
         assert result.exit_code == 0
         assert result.output == expected
@@ -897,8 +897,8 @@ Ethernet29  Not present
 
         result = runner.invoke(show.cli.commands["interfaces"].commands["transceiver"].commands["presence"], ["Ethernet36"])
         expected = """Port        Presence
-----------  ----------
-Ethernet36  Present
+----------  --------------------------------------------
+Ethernet36  SFP presence is not applicable for RJ45 port
 """
         assert result.exit_code == 0
         assert result.output == expected
