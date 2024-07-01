@@ -230,9 +230,12 @@ def breakout_warnUser_extraTables(cm, final_delPorts, confirm=True):
             # find relavent tables in extra tables, i.e. one which can have deleted
             # ports
             tables = cm.configWithKeys(configIn=eTables, keys=final_delPorts)
-            click.secho("Below Config can not be verified, It may cause harm "\
-                "to the system\n {}".format(json.dumps(tables, indent=2)))
-            click.confirm('Do you wish to Continue?', abort=True)
+            if tables:
+                click.secho("Below Config can not be verified, It may cause harm "\
+                    "to the system\n {}".format(json.dumps(tables, indent=2)))
+                click.confirm('Do you wish to Continue?', abort=True)
+    except click.exceptions.Abort as e:
+        raise e
     except Exception as e:
         raise Exception("Failed in breakout_warnUser_extraTables. Error: {}".format(str(e)))
     return
@@ -4642,10 +4645,10 @@ def breakout(ctx, interface_name, mode, verbose, force_remove_dependencies, load
     """ Interface Deletion Logic """
     # Get list of interfaces to be deleted
     del_ports = get_child_ports(interface_name, cur_brkout_mode, breakout_cfg_file)
-    del_intf_dict = {intf: del_ports[intf]["speed"] for intf in del_ports}
+    del_intf_dict = {intf: {"speed":del_ports[intf]["speed"], "lanes":del_ports[intf]["lanes"]} for intf in del_ports}
 
     if del_intf_dict:
-        click.echo("\nPorts to be deleted : \n {}".format(json.dumps(del_intf_dict, indent=4)))
+        click.echo("\nPorts to be deleted:\n{}".format(json.dumps(del_intf_dict, indent=4)))
     else:
         click.secho("[ERROR] del_intf_dict is None! No interfaces are there to be deleted", fg='red')
         raise click.Abort()
@@ -4653,10 +4656,10 @@ def breakout(ctx, interface_name, mode, verbose, force_remove_dependencies, load
     """ Interface Addition Logic """
     # Get list of interfaces to be added
     add_ports = get_child_ports(interface_name, target_brkout_mode, breakout_cfg_file)
-    add_intf_dict = {intf: add_ports[intf]["speed"] for intf in add_ports}
+    add_intf_dict = {intf: {"speed":add_ports[intf]["speed"], "lanes":add_ports[intf]["lanes"]} for intf in add_ports}
 
     if add_intf_dict:
-        click.echo("Ports to be added : \n {}".format(json.dumps(add_intf_dict, indent=4)))
+        click.echo("Ports to be added:\n{}".format(json.dumps(add_intf_dict, indent=4)))
     else:
         click.secho("[ERROR] port_dict is None!", fg='red')
         raise click.Abort()
@@ -4667,13 +4670,23 @@ def breakout(ctx, interface_name, mode, verbose, force_remove_dependencies, load
             click.secho("[ERROR] Interface name {} is invalid".format(intf))
             raise click.Abort()
 
+    if not add_intf_dict and not del_intf_dict:
+        click.secho("[ERROR] No interfaces are there to be added or deleted", fg='red')
+        raise click.Abort()
+
+    if del_intf_dict:
+        click.secho("\nFinal list of ports to be deleted:\n{}".format(json.dumps(del_intf_dict, indent=4)), fg='green', blink=True)
+
+    if add_intf_dict:
+        click.secho("\nFinal list of ports to be added:\n{}".format(json.dumps(add_intf_dict, indent=4)), fg='green', blink=True)
+
     port_dict = {}
     for intf in add_intf_dict:
         if intf in add_ports:
             port_dict[intf] = add_ports[intf]
 
     # writing JSON object
-    with open('new_port_config.json', 'w') as f:
+    with open('/tmp/new_port_config.json', 'w') as f:
         json.dump(port_dict, f, indent=4)
 
     # Start Interation with Dy Port BreakOut Config Mgmt
@@ -4681,10 +4694,12 @@ def breakout(ctx, interface_name, mode, verbose, force_remove_dependencies, load
         """ Load config for the commands which are capable of change in config DB """
         cm = load_ConfigMgmt(verbose)
 
-        """ Delete all ports if forced else print dependencies using ConfigMgmt API """
-        final_delPorts = [intf for intf in del_intf_dict]
-        """ Warn user if tables without yang models exist and have final_delPorts """
-        breakout_warnUser_extraTables(cm, final_delPorts, confirm=True)
+        final_delPorts = []
+        if del_intf_dict:
+            """ Delete all ports if forced else print dependencies using ConfigMgmt API """
+            final_delPorts = [intf for intf in del_intf_dict]
+            """ Warn user if tables without yang models exist and have final_delPorts """
+            breakout_warnUser_extraTables(cm, final_delPorts, confirm=True)
 
         # Create a dictionary containing all the added ports with its capabilities like alias, lanes, speed etc.
         portJson = dict(); portJson['PORT'] = port_dict
@@ -4706,6 +4721,8 @@ def breakout(ctx, interface_name, mode, verbose, force_remove_dependencies, load
                     .format(interface_name), fg="cyan", underline=True)
         click.echo("Please note loaded setting will be lost after system reboot. To preserve setting, run `config save`.")
 
+    except click.exceptions.Abort as e:
+        raise e
     except Exception as e:
         click.secho("Failed to break out Port. Error: {}".format(str(e)), fg='magenta')
 
@@ -4894,6 +4911,8 @@ def add_interface_ip(ctx, interface_name, ip_addr, gw, secondary):
             config_db.set_entry("MGMT_INTERFACE", (interface_name, str(ip_address)), {"NULL": "NULL"})
         else:
             config_db.set_entry("MGMT_INTERFACE", (interface_name, str(ip_address)), {"gwaddr": gw})
+
+        config_db.set_entry("MGMT_PORT", interface_name, {"alias": "eth0"})
 
         return
 
