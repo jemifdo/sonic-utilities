@@ -56,7 +56,9 @@ class FanShow(object):
             data_dict = self.db.get_all(self.db.STATE_DB, key)
             try:
                 speed = float(data_dict[SPEED_FIELD_NAME])
-                if speed > 100:
+                if speed > 200:
+                    # 100% is the max speed and assuming 100% tolerance
+                    # it can't exeed beyond 200% unless it is RPM value
                     speed = '{}RPM'.format(int(speed))
                 else:
                     speed = '{}%'.format(data_dict[SPEED_FIELD_NAME])
